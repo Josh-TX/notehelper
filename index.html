@@ -1,0 +1,196 @@
+<html>
+<head>
+<title>Notes helper</title>
+<link rel="stylesheet" type="text/css" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+<style>
+.inline {
+	display: inline-block;
+}
+</style>
+</head>
+<body ng-app="myApp">
+<div class="container" ng-controller="noteController as noteCtrl">
+	<h2>notes</h2>
+	<textarea class="form-control" ng-model="noteCtrl.str" ng-change="noteCtrl.changed()"></textarea>
+	<button class="btn btn-default" ng-click="noteCtrl.add()">add note</button>
+	<button class="btn btn-default" ng-click="noteCtrl.str = ''">clear</button>
+	<hr>
+	<div ng-repeat="result in noteCtrl.results track by $index" class="row">
+		<div class="col-xs-9" ng-if="result.edit < 0">
+			<p>{{result.text}}</p>
+		</div>
+		<div class="col-xs-9" ng-if="result.edit >= 0">
+			<textarea class="form-control" ng-model="result.text" ng-blur="noteCtrl.edit(result.text, result.index); result.edit = -1"></textarea>
+		</div>
+		<div class="col-xs-3">
+			<button class="btn btn-default" ng-click="result.edit = result.index" ng-if="result.edit < 0">edit</button>
+			<button class="btn btn-default" ng-mouseDown="noteCtrl.changed()" ng-if="result.edit >= 0">cancel</button>
+			
+			<button class="btn btn-default" ng-click="noteCtrl.remove(result.index)">remove</button>
+		</div>
+	</div>
+	<input type="file" file-reader callback="noteCtrl.import(data)" file-name="fileName">
+</div>
+
+<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.5.7/angular.min.js"></script>
+<script>
+var app = angular.module("myApp", [])
+
+app.controller("noteController", function(noteService, $scope) {
+	var self = this;
+	self.str = "";
+	self.results = [];
+	
+	self.changed = changed;
+	self.add = add;
+	self.remove = remove;
+	self.edit = edit;
+	self.import = importFile
+	
+	changed();
+	
+	function add(){
+		noteService.add(self.str);
+		changed();
+	}
+	function changed(){
+		self.results = noteService.getFilteredResults(self.str);
+	}
+	function remove(index){
+		noteService.remove(index);
+		changed();
+	}
+	function edit(str, index){
+		noteService.edit(str, index);
+	}
+	function importFile(str){
+		noteService.import(str);
+		changed();
+	}
+})
+
+app.service("noteService", function($http){
+	var self = this;
+	self.add = add;
+	self.getFilteredResults = getFilteredResults;
+	self.remove = remove;
+	self.edit = edit;
+	self.import = importFile;
+	
+	var notes = [];
+	loadNotes();
+	
+	
+	function add(str){
+		if (str.length == 0){
+			return;
+		}
+		notes.push(str);
+		saveNotes();
+	}
+	function remove(index){
+		notes.splice(index, 1)
+		saveNotes();
+	}
+	function getFilteredResults(filter){
+		var results = [];
+		notes.forEach(function(line, index){
+			if (line.contains(filter)){
+				results.push({
+					text: line,
+					index: index,
+					edit: -1
+				});
+			}
+		})
+		return results;
+	}
+	function edit(str, index){
+		notes[index] = str;
+		saveNotes();
+	}
+	function saveNotes(){
+		localStorage["main"] = notes.join("\n");
+		//localStorage["main"] = JSON.stringify(notes)
+	}
+	function importFile(str){
+		if (confirm("import these notes?\n" + str)){
+			var temp = str.split("\n").filter(function(str){
+				return str.length > 3;
+			});
+			notes = notes.concat(temp);
+			saveNotes();
+		}
+	}
+	function loadNotes(){
+		var noteObj = localStorage["main"];
+		if (typeof noteObj != "string"){
+			alert("nothing was saved");
+			return;
+		}
+		notes = noteObj.split("\n");
+		return;
+		var parsedObj = JSON.parse(noteObj);
+		notes = parsedObj;
+	}
+	/*
+	function ajaxHandler(response){
+		file = response.data.split(/\r?\n/).filter(function(line){
+			return line.length > 1;
+		});
+		self.changed();
+		//alert(JSON.stringify(file))
+	}
+	function errorHandler(response){
+		file = ["error loading notes"]
+		self.changed();
+	}
+	*/
+})
+
+app.directive("fileReader", function(){
+	function link(scope, element, attr){
+		var self = element
+		element.on("change", function(e){
+			var file = e.target.files[0];
+			var tempName = this.value;
+			var reader = new FileReader();
+			reader.onload = function(e){
+				scope.$apply(function(){
+					scope.callback({data: e.target.result});
+					scope.name = tempName;
+				});
+			}
+			reader.readAsText(file);
+		})
+	}
+	return {
+		restrict: "A",
+		scope: {
+			callback: "&",
+			name: "=fileName"
+		},
+		link: link
+	}
+});
+
+String.prototype.contains = function(str){
+	var filters = str.toLowerCase().split(/[ ,_\-]+/);
+	var tokens = this.toLowerCase().split(/[ ,\-]+/);
+	for (var i = 0; i < filters.length; i++) {
+		var match = false;
+		for (var j = 0; j < tokens.length; j++) {
+			if (tokens[j].startsWith(filters[i])) {
+				match = true;
+				break;
+			}
+		}
+		if (match == false) {
+			return false;
+		}
+	}
+	return true;
+}
+</script>
+</body>
+</html>
